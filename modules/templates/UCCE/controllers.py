@@ -822,7 +822,11 @@ class dc_TargetActivate(S3Method):
             item = layout[str(posn)]
             item_type = item["type"]
             if item_type == "question":
-                question = questions[item["id"]]
+                try:
+                    question = questions[item["id"]]
+                except KeyError:
+                    current.log.error("Cannot find question %s! Skipping..." % item["id"])
+                    continue
                 fname = question["name"]
                 if fname:
                     displayLogic = item.get("displayLogic")
