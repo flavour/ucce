@@ -239,8 +239,8 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record):
                               _class = "show-for-sr",
                              ),
                          _href = URL(c="dc", f="target",
-                                     args = [target_id, "copy"],
-                                     vars = {"refresh": list_id}
+                                     args = [target_id, "copy.json"],
+                                     #vars = {"refresh": list_id}
                                      ),
                          _title = T("Copy"),
                          _class = "no-link",
@@ -320,10 +320,7 @@ def project_project_list_layout(list_id, item_id, resource, rfields, record):
         bappend(DIV(DIV(_class = "card-inner-header"),
                     H2(target.name),
                     responses,
-                    # Copy button disabled until implemented
-                    #DIV(edit_btn, copy_btn, delete_btn),
-                    DIV(edit_btn, delete_btn),
-                    #DIV(preview_btn, report_btn),
+                    DIV(edit_btn, copy_btn, delete_btn),
                     DIV(preview_btn, export_btn, report_btn),
                     switch,
                     _class = "project-survey-card medium-2 columns",

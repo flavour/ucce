@@ -31,10 +31,14 @@
 
 __all__ = ("DataCollectionTemplateModel",
            "DataCollectionModel",
+           #"dc_TargetCopy",
            #"dc_TargetReport",
            "dc_TargetXLS",
            "dc_rheader",
            )
+
+import os
+import shutil
 
 from gluon import *
 from gluon.languages import read_dict, write_dict
@@ -543,7 +547,7 @@ class DataCollectionTemplateModel(S3Model):
     def dc_template_onaccept(form):
         """
             On-accept routine for dc_template:
-             - Set the Dynamnic Table to the same Title as the Template
+             - Set the Dynamic Table to the same Title as the Template
              - Convert Question Codes to IDs in the layout
         """
 
@@ -1003,6 +1007,7 @@ class DataCollectionModel(S3Model):
         add_components = self.add_components
         crud_strings = current.response.s3.crud_strings
         define_table = self.define_table
+        set_method = self.set_method
         settings = current.deployment_settings
 
         location_id = self.gis_location_id
@@ -1116,11 +1121,18 @@ class DataCollectionModel(S3Model):
             msg_record_created = T("Data Collection Target added"),
             msg_record_modified = T("Data Collection Target updated"),
             msg_record_deleted = T("Data Collection Target deleted"),
-            msg_list_empty = T("No Data Collection Targets currently registered"))
+            msg_list_empty = T("No Data Collection Targets currently registered"),
+            )
 
-        self.set_method("dc", "target",
-                        method = "results",
-                        action = dc_TargetReport())
+        set_method("dc", "target",
+                   method = "copy",
+                   action = dc_TargetCopy(),
+                   )
+
+        set_method("dc", "target",
+                   method = "results",
+                   action = dc_TargetReport(),
+                   )
 
         target_id = S3ReusableField("target_id", "reference %s" % tablename,
                                     requires = IS_EMPTY_OR(
@@ -1220,8 +1232,8 @@ class DataCollectionModel(S3Model):
 
         # @todo: representation including template name, location and date
         #        (not currently required since always hidden)
-        represent = S3Represent(lookup=tablename,
-                                fields=["date"],
+        represent = S3Represent(lookup = tablename,
+                                fields = ["date"],
                                 )
 
         # Reusable field
@@ -1525,6 +1537,197 @@ class DataCollectionModel(S3Model):
                 s3.scripts.append("/%s/static/scripts/S3/s3.dc_answer.js" % r.application)
             else:
                 s3.scripts.append("/%s/static/scripts/S3/s3.dc_answer.min.js" % r.application)
+
+# =============================================================================
+class dc_TargetCopy(S3Method):
+    """
+        Make a copy of the Target (i.e. collection of Responses)
+        - structure only, no data
+
+        Designed to be accessed via JSON representation rendering overheads
+
+        Used by UCCE
+    """
+
+    # -------------------------------------------------------------------------
+    def apply_method(self, r, **attr):
+        """
+            Entry point for REST API
+
+            @param r: the S3Request
+            @param attr: controller arguments
+        """
+
+        #if r.name != "target":
+        #    r.error(405, current.ERROR.BAD_METHOD)
+
+        db = current.db
+        s3db = current.s3db
+
+        record = r.record
+        target_id = r.id
+        name = f"Copy of {record.name}"
+        realm_entity = record.realm_entity
+        template_id = record.template_id
+
+        # Read Project ID & Masterkey
+        ptable = s3db.project_project_target
+        pmtable = s3db.project_project_masterkey
+        query = (ptable.target_id == target_id) & \
+                (ptable.project_id == pmtable.project_id)
+        link = db(query).select(pmtable.masterkey_id,
+                                pmtable.project_id,
+                                limitby = (0, 1)
+                                ).first()
+
+        # Do we have to handle translations?
+        ltable = s3db.dc_target_l10n
+        l10n = db(ltable.target_id == target_id).select(ltable.language,
+                                                        limitby = (0, 1)
+                                                        ).first()
+        if l10n:
+            language = l10n.language
+        else:
+            language = None
+
+        # Read the old Template
+        table = s3db.dc_template
+        template = db(table.id == template_id).select(table.layout,
+                                                      limitby = (0, 1),
+                                                      ).first()
+        layout = template.layout
+
+        # Read the Questions
+        qtable = s3db.dc_question
+        fields = [qtable.id,
+                  qtable.name,
+                  qtable.field_type,
+                  qtable.options,
+                  qtable.settings,
+                  qtable.require_not_empty,
+                  qtable.file,
+                  qtable.comments,
+                  ]
+        if l10n:
+            qltable = s3db.dc_question_l10n
+            fields += [qltable.name_l10n,
+                       qltable.options_l10n,
+                       ]
+            left = qltable.on(qltable.question_id == qtable.id)
+        else:
+            left = None
+        questions = db(table.id == template_id).select(left = left,
+                                                       *fields,
+                                                       )
+
+        # Make a copy of the Template
+        template = {"name": name,
+                    "realm_entity": realm_entity,
+                    }
+        template_id = table.insert(**template)
+        template["id"] = template_id
+        # Create & link the Dynamic Table
+        onaccept = s3db.get_config("dc_template", "create_onaccept")
+        onaccept(Storage(vars = template))
+
+        # Update Dynamic Table
+        template = db(table.id == template_id).select(table.table_id,
+                                                      limitby = (0, 1)
+                                                      ).first()
+        db(s3db.s3_table.id == template.table_id).update(masterkey_id = link.masterkey_id,
+                                                         mobile_form = False,
+                                                         )
+
+        # Add Translations
+        if language:
+            # Create Template_l10n
+            s3db.dc_template_l10n.insert(template_id = template_id,
+                                         language = language,
+                                         )
+
+        # Make a copy of the Questions
+        onaccept = s3db.get_config("dc_question", "onaccept")
+        question_map = {}
+        uploadfolder = qtable.file.uploadfolder
+        for question in questions:
+            if language:
+                lquestion = question["dc_question_l10n"]
+                question = question["dc_question"]
+            question_settings = question.settings
+            if "other_id" in question_settings:
+                # other_id needs recreating
+                question_settings.pop("other_id")
+            image = question.file
+            if image:
+                # Create a copy of the Image
+                tname, fname, uuid_key, encoded_filename, extension = image.split(".", 4)
+                uuid_key = db.uuid().replace("-", "")[-16:]
+                newfilename = f"{tname}.{fname}.{uuid_key}.{encoded_filename}.{extension}"
+                shutil.copyfile(os.path.join(uploadfolder, image),
+                                os.path.join(uploadfolder, newfilename),
+                                )
+            else:
+                newfilename = None
+                pipe_image = question_settings.get("pipeImage")
+                if pipe_image:
+                    # Point to the new question, not the old one
+                    pipe_image["id"] = question_map[pipe_image["id"]]
+            question_id = qtable.insert(template_id = template_id,
+                                        name = question.name,
+                                        field_type = question.field_type,
+                                        options = question.options,
+                                        settings = question_settings,
+                                        require_not_empty = question.require_not_empty,
+                                        file = newfilename,
+                                        comments = question.comments,
+                                        )
+            if language:
+                qltable.insert(question_id = question_id,
+                               language = language,
+                               name_l10n = lquestion.name_l10n,
+                               options_l10n = lquestion.options_l10n,
+                               )
+            # Create & link the Dynamic Field & Mobile Settings
+            onaccept(Storage(vars = Storage(id = question_id)))
+            question_map[question.id] = question_id
+
+        # Update layout IDs
+        if layout is not None:
+            new_layout = {}
+            for position in layout:
+                item = layout[position]
+                if item["type"] != "question":
+                    new_layout[position] = item
+                    continue
+                question_id = item.get("id")
+                if question_id:
+                    item["id"] = question_map[question_id]
+                    new_layout[position] = item
+                    continue
+                current.log.error("Question without ID")
+
+            # Add updated Layout to the Template
+            db(table.id == template_id).update(layout = new_layout)
+
+        # Make a copy of the Target
+        target_id = s3db.dc_target.insert(name = name,
+                                          template_id = template_id,
+                                          realm_entity = realm_entity,
+                                          )
+
+        # Add Translations
+        if language:
+            ltable.insert(language = language,
+                          target_id = target_id,
+                          )
+
+        # Link to the Project
+        ptable.insert(project_id = link.project_id,
+                      target_id = target_id,
+                      )
+
+        redirect(URL(c="project", f="project",
+                     args="datalist"))
 
 # =============================================================================
 class dc_TargetReport(S3Method):

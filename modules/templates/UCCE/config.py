@@ -549,8 +549,7 @@ def config(settings):
             template = {"template_id": template_id,
                         "language": l10n.language,
                         }
-            ltable = s3db.dc_template_l10n
-            ltable.insert(**template)
+            s3db.dc_template_l10n.insert(**template)
 
         # Link Target to Template
         tatable = s3db.dc_target
