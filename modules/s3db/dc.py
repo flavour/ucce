@@ -1653,7 +1653,7 @@ class dc_TargetCopy(S3Method):
             if language:
                 lquestion = question["dc_question_l10n"]
                 question = question["dc_question"]
-            question_settings = question.settings
+            question_settings = question.settings or {}
             if "other_id" in question_settings:
                 # other_id needs recreating
                 question_settings.pop("other_id")
