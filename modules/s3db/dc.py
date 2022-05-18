@@ -1616,9 +1616,9 @@ class dc_TargetCopy(S3Method):
             left = qltable.on(qltable.question_id == qtable.id)
         else:
             left = None
-        questions = db(table.id == template_id).select(left = left,
-                                                       *fields,
-                                                       )
+        questions = db(qtable.id == template_id).select(left = left,
+                                                        *fields,
+                                                        )
 
         # Make a copy of the Template
         template = {"name": name,
