@@ -1649,8 +1649,10 @@ class dc_TargetCopy(S3Method):
         # Make a copy of the Questions
         onaccept = s3db.get_config("dc_question", "onaccept")
         question_map = {}
+        images_to_fix = []
         uploadfolder = qtable.file.uploadfolder
         for question in questions:
+            image_to_fix = False
             if language:
                 lquestion = question["dc_question_l10n"]
                 question = question["dc_question"]
@@ -1672,7 +1674,12 @@ class dc_TargetCopy(S3Method):
                 pipe_image = question_settings.get("pipeImage")
                 if pipe_image:
                     # Point to the new question, not the old one
-                    pipe_image["id"] = question_map[pipe_image["id"]]
+                    try:
+                        pipe_image["id"] = question_map[pipe_image["id"]]
+                    except KeyError:
+                        # Pointing to a future question
+                        # - fix this up in a second round
+                        image_to_fix = True
             question_id = qtable.insert(template_id = template_id,
                                         name = question.name,
                                         field_type = question.field_type,
@@ -1682,6 +1689,8 @@ class dc_TargetCopy(S3Method):
                                         file = newfilename,
                                         comments = question.comments,
                                         )
+            if image_to_fix:
+                images_to_fix.append(question_id)
             if language:
                 qltable.insert(question_id = question_id,
                                language = language,
@@ -1691,6 +1700,17 @@ class dc_TargetCopy(S3Method):
             # Create & link the Dynamic Field & Mobile Settings
             onaccept(Storage(vars = Storage(id = question_id)))
             question_map[question.id] = question_id
+
+        # Fixup images
+        for question_id in images_to_fix:
+            question = db(qtable.id == question_id).select(qtable.id,
+                                                           qtable.settings,
+                                                           limitby = (0, 1),
+                                                           )
+            question_settings = question.settings
+            pipe_image = question_settings.get("pipeImage")
+            pipe_image["id"] = question_map[pipe_image["id"]]
+            question.update_record(settings = question_settings)
 
         # Update layout IDs
         if layout is not None:
