@@ -1706,7 +1706,7 @@ class dc_TargetCopy(S3Method):
             question = db(qtable.id == question_id).select(qtable.id,
                                                            qtable.settings,
                                                            limitby = (0, 1),
-                                                           )
+                                                           ).first()
             question_settings = question.settings
             pipe_image = question_settings.get("pipeImage")
             pipe_image["id"] = question_map[pipe_image["id"]]
