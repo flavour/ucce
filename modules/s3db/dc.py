@@ -1608,7 +1608,7 @@ class dc_TargetCopy(S3Method):
                   qtable.file,
                   qtable.comments,
                   ]
-        if l10n:
+        if language:
             qltable = s3db.dc_question_l10n
             fields += [qltable.name_l10n,
                        qltable.options_l10n,
