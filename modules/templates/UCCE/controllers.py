@@ -2931,6 +2931,9 @@ class dc_TemplateExportL10n(S3Method):
                     error = sys.exc_info()[1]
                     current.log.error(error)
                 output.seek(0)
+                
+                if attr.get("as_stream", False):
+                    return output
 
                 # Response headers
                 title = record.name
