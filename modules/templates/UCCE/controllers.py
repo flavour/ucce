@@ -8,7 +8,7 @@ from gluon import *
 from gluon.storage import Storage
 
 from s3 import json, s3_str, ICON, S3CustomController, S3DateTime, S3Method
-from s3compat import StringIO, xrange
+from s3compat import BytesIO, StringIO, xrange
 
 # Compact JSON encoding
 SEPARATORS = (",", ":")
@@ -2923,7 +2923,7 @@ class dc_TemplateExportL10n(S3Method):
                             write(cell + 1, option_l10n)
 
                 # Export to File
-                output = StringIO()
+                output = BytesIO()
                 try:
                     book.save(output)
                 except:
