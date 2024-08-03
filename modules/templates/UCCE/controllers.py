@@ -2934,7 +2934,7 @@ class dc_TemplateExportL10n(S3Method):
 
                 # Response headers
                 title = record.name
-                filename = "%s.xls" % title.encode("utf8")
+                filename = "%s.xls" % title.encode("utf8").decode("latin-1")
                 response = current.response
                 from gluon.contenttype import contenttype
                 response.headers["Content-Type"] = contenttype(".xls")
