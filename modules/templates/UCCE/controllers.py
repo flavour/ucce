@@ -2934,11 +2934,11 @@ class dc_TemplateExportL10n(S3Method):
 
                 # Response headers
                 title = record.name
-                filename = "%s.xls" % title.encode("utf8").decode("latin-1")
-                response = current.response
+                filename = "%s.xls" % title
                 from gluon.contenttype import contenttype
+                disposition = "attachment; filename=\"%s\"" % filename.encode("utf-8").decode("latin-1")
+                response = current.response
                 response.headers["Content-Type"] = contenttype(".xls")
-                disposition = "attachment; filename=\"%s\"" % filename
                 response.headers["Content-disposition"] = disposition
 
                 return output.read()
